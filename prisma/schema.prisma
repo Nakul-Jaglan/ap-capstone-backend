@@ -1,0 +1,69 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  clerkId     String   @unique
+  name        String?
+  email       String?
+  avatarUrl   String?
+  role        String
+  joinedAt    DateTime @default(now())
+  lastActiveAt DateTime?
+}
+
+model Channel {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  description String?
+  createdBy   String   // User.id
+  members     String[] @db.ObjectId
+  isDirect    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime?
+}
+
+model Message {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  channelId   String   @db.ObjectId // reference to Channel
+  senderId    String   @db.ObjectId // reference to User
+  content     String?
+  mediaUrl    String?
+  mediaType   String?
+  sentAt      DateTime @default(now())
+  readBy      String[] @db.ObjectId
+  deleted     Boolean  @default(false)
+}
+
+model Media {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  uploaderId     String   @db.ObjectId // User.id
+  channelId      String   @db.ObjectId // Channel.id
+  type           String
+  url            String
+  uploadedAt     DateTime @default(now())
+  originalFilename String?
+}
+
+model CallLog {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  channelId    String   @db.ObjectId
+  participants String[] @db.ObjectId
+  startedAt    DateTime
+  endedAt      DateTime?
+  callType     String
+  status       String
+}
