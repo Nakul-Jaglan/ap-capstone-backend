@@ -17,7 +17,7 @@ app.use(cors({
 app.use(express.json())
 
 app.get('/', (req, res) => {
-  res.send('This is the backend server of CollabSpace!');
+  res.json({message: 'This is the backend server of CollabSpace!'});
 });
 
 app.post('/signup', async (req, res) => {
