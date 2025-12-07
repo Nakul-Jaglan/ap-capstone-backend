@@ -32,6 +32,7 @@ model Channel {
   createdBy   String   // User.id
   members     String[] @db.ObjectId
   isDirect    Boolean  @default(false)
+  inviteCode  String?  @unique
   createdAt   DateTime @default(now())
   updatedAt   DateTime?
 }
@@ -44,6 +45,7 @@ model Message {
   mediaUrl    String?
   mediaType   String?
   sentAt      DateTime @default(now())
+  updatedAt   DateTime?
   readBy      String[] @db.ObjectId
   deleted     Boolean  @default(false)
 }
