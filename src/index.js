@@ -163,6 +163,64 @@ app.get("/users/me", isValidToken, async (req, res) => {
   return res.status(200).json({ data: user });
 });
 
+app.put("/users/me", isValidToken, async (req, res) => {
+  const { id } = req.user;
+  const { name, bio, avatarUrl } = req.body;
+
+  try {
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (bio !== undefined) updateData.bio = bio;
+    if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
+
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: updateData
+    });
+
+    return res.status(200).json({
+      message: "Profile updated successfully",
+      data: updatedUser
+    });
+  } catch (error) {
+    console.error('Profile update error:', error);
+    return res.status(500).json({ message: "Failed to update profile" });
+  }
+});
+
+app.put("/users/me/password", isValidToken, async (req, res) => {
+  const { id } = req.user;
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: "Current and new password are required" });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id }
+    });
+
+    const isPasswordMatch = await bcrypt.compare(currentPassword, user.password);
+
+    if (!isPasswordMatch) {
+      return res.status(401).json({ message: "Current password is incorrect" });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await prisma.user.update({
+      where: { id },
+      data: { password: hashedPassword }
+    });
+
+    return res.status(200).json({ message: "Password updated successfully" });
+  } catch (error) {
+    console.error('Password update error:', error);
+    return res.status(500).json({ message: "Failed to update password" });
+  }
+});
+
 app.get("/users/:term", isValidToken, async (req, res) => {
   const { term } = req.params;
 
