@@ -703,11 +703,11 @@ app.get("/calls/:channelId", isValidToken, async (req, res) => {
             });
           })
         );
-        
-        const duration = call.endedAt 
+
+        const duration = call.endedAt
           ? Math.floor((new Date(call.endedAt) - new Date(call.startedAt)) / 1000)
           : 0;
-        
+
         return { ...call, participants, duration };
       })
     );
@@ -800,6 +800,7 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(4000, () => {
-  console.log(`Server is running on port 4000`);
+const PORT = process.env.PORT || 4000;
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
