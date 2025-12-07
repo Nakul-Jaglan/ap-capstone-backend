@@ -19,4 +19,16 @@ async function isValidToken(req, res, next) {
     }
 }
 
-module.exports = { isValidToken }
+async function isAdmin(req, res, next) {
+    try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ message: "Access denied. Admin role required." })
+        }
+        next()
+    } catch (error) {
+        console.error('Admin check error:', error.message)
+        return res.status(403).json({ message: "Access denied" })
+    }
+}
+
+module.exports = { isValidToken, isAdmin }

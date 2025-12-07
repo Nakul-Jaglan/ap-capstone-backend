@@ -15,7 +15,7 @@ const io = new Server(server, {
     credentials: true
   }
 });
-const { isValidToken } = require('./middleware/middleware');
+const { isValidToken, isAdmin } = require('./middleware/middleware');
 
 // Enable CORS for frontend
 app.use(cors({
@@ -986,6 +986,427 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     // console.log('User disconnected:', socket.id);
   });
+});
+
+// ==================== ADMIN ROUTES ====================
+
+// Admin - Get all users with filtering, sorting, pagination, and search
+app.get("/admin/users", isValidToken, isAdmin, async (req, res) => {
+  const { 
+    page = 1, 
+    limit = 10, 
+    search = '', 
+    sortBy = 'joinedAt', 
+    sortOrder = 'desc',
+    role = ''
+  } = req.query;
+
+  try {
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const where = {};
+
+    // Search filter
+    if (search) {
+      where.OR = [
+        { username: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    // Role filter
+    if (role) {
+      where.role = role;
+    }
+
+    // Validate sortBy field - User model doesn't have createdAt, it has joinedAt
+    const validSortFields = ['id', 'username', 'email', 'name', 'role', 'joinedAt', 'lastActiveAt'];
+    const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'joinedAt';
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        orderBy: { [safeSortBy]: sortOrder }
+      }),
+      prisma.user.count({ where })
+    ]);
+
+    // Manually count messages for each user
+    const usersWithCounts = await Promise.all(
+      users.map(async (user) => {
+        const messageCount = await prisma.message.count({
+          where: { senderId: user.id }
+        });
+        const channelCount = await prisma.channel.count({
+          where: { createdBy: user.id }
+        });
+        return {
+          ...user,
+          _count: {
+            sentMessages: messageCount,
+            channels: channelCount
+          }
+        };
+      })
+    );
+
+    return res.status(200).json({
+      data: usersWithCounts,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Admin users error:', error);
+    return res.status(500).json({ message: "Failed to fetch users" });
+  }
+});
+
+// Admin - Get all channels with filtering, sorting, pagination, and search
+app.get("/admin/channels", isValidToken, isAdmin, async (req, res) => {
+  const { 
+    page = 1, 
+    limit = 10, 
+    search = '', 
+    sortBy = 'createdAt', 
+    sortOrder = 'desc',
+    isDirect = ''
+  } = req.query;
+
+  try {
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const where = {};
+
+    // Search filter
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    // Channel type filter
+    if (isDirect !== '') {
+      where.isDirect = isDirect === 'true';
+    }
+
+    const [channels, total] = await Promise.all([
+      prisma.channel.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        orderBy: { [sortBy]: sortOrder }
+      }),
+      prisma.channel.count({ where })
+    ]);
+
+    // Manually fetch creator and counts for each channel
+    const channelsWithDetails = await Promise.all(
+      channels.map(async (channel) => {
+        const creator = await prisma.user.findUnique({
+          where: { id: channel.createdBy },
+          select: { id: true, username: true, name: true }
+        });
+        const messageCount = await prisma.message.count({
+          where: { channelId: channel.id }
+        });
+        return {
+          ...channel,
+          creator,
+          _count: {
+            members: channel.members.length,
+            messages: messageCount
+          }
+        };
+      })
+    );
+
+    return res.status(200).json({
+      data: channelsWithDetails,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Admin channels error:', error);
+    return res.status(500).json({ message: "Failed to fetch channels" });
+  }
+});
+
+// Admin - Get all messages with filtering, sorting, pagination, and search
+app.get("/admin/messages", isValidToken, isAdmin, async (req, res) => {
+  const { 
+    page = 1, 
+    limit = 10, 
+    search = '', 
+    sortBy = 'sentAt', 
+    sortOrder = 'desc',
+    channelId = '',
+    senderId = '',
+    deleted = ''
+  } = req.query;
+
+  try {
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const where = {};
+
+    // Search filter
+    if (search) {
+      where.content = { contains: search, mode: 'insensitive' };
+    }
+
+    // Channel filter
+    if (channelId) {
+      where.channelId = channelId;
+    }
+
+    // Sender filter
+    if (senderId) {
+      where.senderId = senderId;
+    }
+
+    // Deleted filter
+    if (deleted !== '') {
+      where.deleted = deleted === 'true';
+    }
+
+    const [messages, total] = await Promise.all([
+      prisma.message.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        orderBy: { [sortBy]: sortOrder }
+      }),
+      prisma.message.count({ where })
+    ]);
+
+    // Manually fetch sender and channel for each message
+    const messagesWithDetails = await Promise.all(
+      messages.map(async (message) => {
+        const sender = await prisma.user.findUnique({
+          where: { id: message.senderId },
+          select: { id: true, username: true, name: true, avatarUrl: true }
+        });
+        const channel = await prisma.channel.findUnique({
+          where: { id: message.channelId },
+          select: { id: true, name: true, isDirect: true }
+        });
+        return {
+          ...message,
+          sender,
+          channel
+        };
+      })
+    );
+
+    return res.status(200).json({
+      data: messagesWithDetails,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Admin messages error:', error);
+    return res.status(500).json({ message: "Failed to fetch messages" });
+  }
+});
+
+// Admin - Get all call logs with filtering, sorting, pagination
+app.get("/admin/calls", isValidToken, isAdmin, async (req, res) => {
+  const { 
+    page = 1, 
+    limit = 10, 
+    sortBy = 'startedAt', 
+    sortOrder = 'desc',
+    channelId = '',
+    callType = ''
+  } = req.query;
+
+  try {
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const where = {};
+
+    // Channel filter
+    if (channelId) {
+      where.channelId = channelId;
+    }
+
+    // Call type filter
+    if (callType) {
+      where.callType = callType;
+    }
+
+    const [calls, total] = await Promise.all([
+      prisma.callLog.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        orderBy: { [sortBy]: sortOrder }
+      }),
+      prisma.callLog.count({ where })
+    ]);
+
+    // Manually fetch initiator (first participant) and channel for each call
+    const callsWithDetails = await Promise.all(
+      calls.map(async (call) => {
+        const initiatorId = call.participants[0];
+        const initiator = initiatorId ? await prisma.user.findUnique({
+          where: { id: initiatorId },
+          select: { id: true, username: true, name: true, avatarUrl: true }
+        }) : null;
+        const channel = await prisma.channel.findUnique({
+          where: { id: call.channelId },
+          select: { id: true, name: true, isDirect: true }
+        });
+        return {
+          ...call,
+          initiator,
+          channel
+        };
+      })
+    );
+
+    return res.status(200).json({
+      data: callsWithDetails,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Admin calls error:', error);
+    return res.status(500).json({ message: "Failed to fetch calls" });
+  }
+});
+
+// Admin - Get dashboard stats
+app.get("/admin/stats", isValidToken, isAdmin, async (req, res) => {
+  try {
+    const [
+      totalUsers,
+      totalChannels,
+      totalMessages,
+      totalCalls,
+      recentUsers,
+      usersByRole
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.channel.count(),
+      prisma.message.count(),
+      prisma.callLog.count(),
+      prisma.user.count({
+        where: {
+          joinedAt: {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // Last 7 days
+          }
+        }
+      }),
+      prisma.user.groupBy({
+        by: ['role'],
+        _count: true
+      })
+    ]);
+
+    return res.status(200).json({
+      data: {
+        totalUsers,
+        totalChannels,
+        totalMessages,
+        totalCalls,
+        recentUsers,
+        usersByRole
+      }
+    });
+  } catch (error) {
+    console.error('Admin stats error:', error);
+    return res.status(500).json({ message: "Failed to fetch stats" });
+  }
+});
+
+// Admin - Delete user
+app.delete("/admin/users/:userId", isValidToken, isAdmin, async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    await prisma.user.delete({
+      where: { id: userId }
+    });
+
+    return res.status(200).json({ message: "User deleted successfully" });
+  } catch (error) {
+    console.error('Admin delete user error:', error);
+    return res.status(500).json({ message: "Failed to delete user" });
+  }
+});
+
+// Admin - Delete channel
+app.delete("/admin/channels/:channelId", isValidToken, isAdmin, async (req, res) => {
+  const { channelId } = req.params;
+
+  try {
+    await prisma.channel.delete({
+      where: { id: channelId }
+    });
+
+    return res.status(200).json({ message: "Channel deleted successfully" });
+  } catch (error) {
+    console.error('Admin delete channel error:', error);
+    return res.status(500).json({ message: "Failed to delete channel" });
+  }
+});
+
+// Admin - Delete message
+app.delete("/admin/messages/:messageId", isValidToken, isAdmin, async (req, res) => {
+  const { messageId } = req.params;
+
+  try {
+    await prisma.message.delete({
+      where: { id: messageId }
+    });
+
+    return res.status(200).json({ message: "Message deleted successfully" });
+  } catch (error) {
+    console.error('Admin delete message error:', error);
+    return res.status(500).json({ message: "Failed to delete message" });
+  }
+});
+
+// Admin - Update user role
+app.put("/admin/users/:userId/role", isValidToken, isAdmin, async (req, res) => {
+  const { userId } = req.params;
+  const { role } = req.body;
+
+  if (!role || !['user', 'admin'].includes(role)) {
+    return res.status(400).json({ message: "Invalid role" });
+  }
+
+  try {
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { role }
+    });
+
+    return res.status(200).json({
+      message: "User role updated successfully",
+      data: updatedUser
+    });
+  } catch (error) {
+    console.error('Admin update user role error:', error);
+    return res.status(500).json({ message: "Failed to update user role" });
+  }
 });
 
 const PORT = process.env.PORT || 4000;

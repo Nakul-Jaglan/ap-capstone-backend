@@ -33,7 +33,7 @@ model Channel {
   createdBy   String   // User.id
   members     String[] @db.ObjectId
   isDirect    Boolean  @default(false)
-  inviteCode  String?  @unique
+  inviteCode  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime?
 }
