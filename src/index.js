@@ -307,6 +307,82 @@ app.post("/messages", isValidToken, async (req, res) => {
   }
 });
 
+app.put("/messages/:messageId/read", isValidToken, async (req, res) => {
+  const { messageId } = req.params;
+  const { id: userId } = req.user;
+
+  try {
+    const message = await prisma.message.findUnique({
+      where: { id: messageId }
+    });
+
+    if (!message) {
+      return res.status(404).json({ message: "Message not found" });
+    }
+
+    if (message.readBy.includes(userId)) {
+      return res.status(200).json({ message: "Already read" });
+    }
+
+    const updatedMessage = await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        readBy: {
+          push: userId
+        }
+      }
+    });
+
+    return res.status(200).json({
+      message: "Message marked as read",
+      data: updatedMessage
+    });
+  } catch (error) {
+    console.error('Mark as read error:', error);
+    return res.status(500).json({ message: "Failed to mark message as read" });
+  }
+});
+
+app.post("/messages/mark-read", isValidToken, async (req, res) => {
+  const { channelId } = req.body;
+  const { id: userId } = req.user;
+
+  if (!channelId) {
+    return res.status(400).json({ message: "Channel ID is required" });
+  }
+
+  try {
+    const unreadMessages = await prisma.message.findMany({
+      where: {
+        channelId,
+        senderId: { not: userId },
+        NOT: { readBy: { has: userId } }
+      }
+    });
+
+    await Promise.all(
+      unreadMessages.map(msg =>
+        prisma.message.update({
+          where: { id: msg.id },
+          data: {
+            readBy: {
+              push: userId
+            }
+          }
+        })
+      )
+    );
+
+    return res.status(200).json({
+      message: "All messages marked as read",
+      count: unreadMessages.length
+    });
+  } catch (error) {
+    console.error('Mark all as read error:', error);
+    return res.status(500).json({ message: "Failed to mark messages as read" });
+  }
+});
+
 app.put("/messages/:messageId", isValidToken, async (req, res) => {
   const { messageId } = req.params;
   const { content } = req.body;
@@ -394,6 +470,56 @@ app.delete("/messages/:messageId", isValidToken, async (req, res) => {
   } catch (error) {
     console.error('Message delete error:', error);
     return res.status(500).json({ message: "Failed to delete message" });
+  }
+});
+
+app.get("/messages", isValidToken, async (req, res) => {
+  const { id: currentUserId } = req.user;
+
+  try {
+    const dmChannels = await prisma.channel.findMany({
+      where: {
+        isDirect: true,
+        members: { has: currentUserId }
+      },
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    const dmsWithDetails = await Promise.all(
+      dmChannels.map(async (channel) => {
+        const otherUserId = channel.members.find(id => id !== currentUserId);
+        const otherUser = await prisma.user.findUnique({
+          where: { id: otherUserId },
+          select: { id: true, username: true, name: true, avatarUrl: true, lastActiveAt: true }
+        });
+
+        const lastMessage = await prisma.message.findFirst({
+          where: { channelId: channel.id, deleted: false },
+          orderBy: { sentAt: 'desc' }
+        });
+
+        const unreadCount = await prisma.message.count({
+          where: {
+            channelId: channel.id,
+            deleted: false,
+            senderId: { not: currentUserId },
+            NOT: { readBy: { has: currentUserId } }
+          }
+        });
+
+        return {
+          channel,
+          otherUser,
+          lastMessage,
+          unreadCount
+        };
+      })
+    );
+
+    return res.status(200).json({ data: dmsWithDetails });
+  } catch (error) {
+    console.error('Fetching DMs error:', error);
+    return res.status(500).json({ message: "Failed to fetch DMs" });
   }
 });
 
@@ -808,6 +934,10 @@ io.on('connection', (socket) => {
 
   socket.on('stop_typing', ({ channelId, username }) => {
     socket.to(channelId).emit('user_stop_typing', { username });
+  });
+
+  socket.on('message_read', ({ channelId, messageId, userId }) => {
+    socket.to(channelId).emit('message_read_update', { messageId, userId });
   });
 
   // WebRTC Signaling for Voice/Video Calls
