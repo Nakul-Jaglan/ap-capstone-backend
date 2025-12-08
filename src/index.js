@@ -941,10 +941,11 @@ io.on('connection', (socket) => {
   });
 
   // WebRTC Signaling for Voice/Video Calls
-  socket.on('call:initiate', ({ channelId, callerId, callerName, callType, targetUserId }) => {
+  socket.on('call:initiate', ({ channelId, callerId, callerName, callerAvatar, callType, targetUserId }) => {
     socket.to(channelId).emit('call:incoming', {
       callerId,
       callerName,
+      callerAvatar,
       callType,
       channelId,
       targetUserId
