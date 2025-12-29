@@ -11,7 +11,7 @@ const app = express()
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: process.env.FRONTEND_URL,
     credentials: true
   }
 });
@@ -19,7 +19,7 @@ const { isValidToken, isAdmin } = require('./middleware/middleware');
 
 // Enable CORS for frontend
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: process.env.FRONTEND_URL,
   credentials: true
 }))
 
@@ -993,11 +993,11 @@ io.on('connection', (socket) => {
 
 // Admin - Get all users with filtering, sorting, pagination, and search
 app.get("/admin/users", isValidToken, isAdmin, async (req, res) => {
-  const { 
-    page = 1, 
-    limit = 10, 
-    search = '', 
-    sortBy = 'joinedAt', 
+  const {
+    page = 1,
+    limit = 10,
+    search = '',
+    sortBy = 'joinedAt',
     sortOrder = 'desc',
     role = ''
   } = req.query;
@@ -1070,11 +1070,11 @@ app.get("/admin/users", isValidToken, isAdmin, async (req, res) => {
 
 // Admin - Get all channels with filtering, sorting, pagination, and search
 app.get("/admin/channels", isValidToken, isAdmin, async (req, res) => {
-  const { 
-    page = 1, 
-    limit = 10, 
-    search = '', 
-    sortBy = 'createdAt', 
+  const {
+    page = 1,
+    limit = 10,
+    search = '',
+    sortBy = 'createdAt',
     sortOrder = 'desc',
     isDirect = ''
   } = req.query;
@@ -1144,11 +1144,11 @@ app.get("/admin/channels", isValidToken, isAdmin, async (req, res) => {
 
 // Admin - Get all messages with filtering, sorting, pagination, and search
 app.get("/admin/messages", isValidToken, isAdmin, async (req, res) => {
-  const { 
-    page = 1, 
-    limit = 10, 
-    search = '', 
-    sortBy = 'sentAt', 
+  const {
+    page = 1,
+    limit = 10,
+    search = '',
+    sortBy = 'sentAt',
     sortOrder = 'desc',
     channelId = '',
     senderId = '',
@@ -1225,10 +1225,10 @@ app.get("/admin/messages", isValidToken, isAdmin, async (req, res) => {
 
 // Admin - Get all call logs with filtering, sorting, pagination
 app.get("/admin/calls", isValidToken, isAdmin, async (req, res) => {
-  const { 
-    page = 1, 
-    limit = 10, 
-    sortBy = 'startedAt', 
+  const {
+    page = 1,
+    limit = 10,
+    sortBy = 'startedAt',
     sortOrder = 'desc',
     channelId = '',
     callType = ''
@@ -1410,7 +1410,7 @@ app.put("/admin/users/:userId/role", isValidToken, isAdmin, async (req, res) => 
   }
 });
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
